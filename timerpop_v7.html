@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Slim Timer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background-color: #020617;
+            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .glass-ui {
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(20px);
+            padding: 2.5rem;
+            border-radius: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            width: 100%;
+            max-width: 400px;
+        }
+
+        input[type="number"] {
+            background: transparent;
+            font-size: 5rem;
+            width: 100%;
+            text-align: center;
+            font-weight: 900;
+            outline: none;
+            color: var(--theme-color, #10b981);
+            letter-spacing: -0.05em;
+        }
+
+        .color-swatch {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.2s;
+            border: 2px solid transparent;
+        }
+
+        .color-swatch.active {
+            border-color: white;
+            transform: scale(1.2);
+        }
+
+        #pip-video {
+            position: fixed;
+            bottom: 0;
+            right: 0;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="glass-ui">
+        <div class="mb-6 text-center">
+            <h1 class="text-xl font-black tracking-tighter uppercase italic">Slim-Track</h1>
+        </div>
+
+        <div class="relative mb-6">
+            <input type="number" id="minutes-input" value="25" min="1">
+            <div class="text-center text-slate-500 text-[10px] font-bold tracking-widest uppercase mt-1">Set Duration</div>
+        </div>
+
+        <div class="flex justify-center gap-4 mb-8">
+            <div class="color-swatch active" style="background: #10b981;" data-color="#10b981"></div>
+            <div class="color-swatch" style="background: #6366f1;" data-color="#6366f1"></div>
+            <div class="color-swatch" style="background: #f43f5e;" data-color="#f43f5e"></div>
+            <div class="color-swatch" style="background: #ffffff;" data-color="#ffffff"></div>
+        </div>
+
+        <div class="space-y-3">
+            <button id="main-btn" class="w-full py-4 rounded-xl font-black text-xs tracking-widest transition-all bg-white text-black hover:bg-emerald-400">
+                LAUNCH MINI PLAYER
+            </button>
+            
+            <div id="sub-controls" class="hidden flex gap-2">
+                <button id="pause-btn" class="flex-1 bg-slate-800 py-3 rounded-xl font-bold text-[10px] tracking-widest text-white">PAUSE</button>
+                <button id="reset-btn" class="flex-1 bg-slate-800 py-3 rounded-xl font-bold text-[10px] tracking-widest text-white">RESET</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- The Canvas is now a wide rectangle (500x200) -->
+    <canvas id="pip-canvas" width="500" height="200" style="display:none;"></canvas>
+    <video id="pip-video" autoplay muted playsinline></video>
+
+    <script>
+        const minutesInput = document.getElementById('minutes-input');
+        const mainBtn = document.getElementById('main-btn');
+        const pauseBtn = document.getElementById('pause-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const subControls = document.getElementById('sub-controls');
+        const canvas = document.getElementById('pip-canvas');
+        const video = document.getElementById('pip-video');
+        const ctx = canvas.getContext('2d');
+
+        let timeLeft = 1500;
+        let originalTime = 1500;
+        let timerInterval = null;
+        let isPaused = false;
+        let themeColor = '#10b981';
+
+        video.srcObject = canvas.captureStream(30);
+
+        function draw() {
+            const w = canvas.width;
+            const h = canvas.height;
+            const pad = 10; // Padding for the border animation
+            
+            // Background
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, w, h);
+
+            // Perimeter Rectangle Path Logic
+            const progress = timeLeft / originalTime;
+            const totalPerimeter = (w - 2*pad) * 2 + (h - 2*pad) * 2;
+            const currentDistance = totalPerimeter * progress;
+
+            // Draw Track (Dark)
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 8;
+            ctx.strokeRect(pad, pad, w - 2*pad, h - 2*pad);
+
+            // Draw Progress Border
+            if (timeLeft > 0) {
+                ctx.strokeStyle = themeColor;
+                ctx.lineWidth = 8;
+                ctx.lineCap = 'square';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = themeColor;
+
+                // Simple rectangle stroke that shortens based on time
+                // Using setLineDash to "drain" the rectangle border
+                ctx.setLineDash([totalPerimeter]);
+                ctx.lineDashOffset = totalPerimeter - currentDistance;
+                ctx.strokeRect(pad, pad, w - 2*pad, h - 2*pad);
+                ctx.setLineDash([]);
+                ctx.shadowBlur = 0;
+            }
+
+            // Time Typography
+            const m = Math.floor(timeLeft / 60);
+            const s = timeLeft % 60;
+            const timeStr = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '900 140px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.letterSpacing = "-6px";
+            ctx.fillText(timeStr, w / 2, h / 2 + 5);
+        }
+
+        async function launchTimer() {
+            if (document.pictureInPictureElement) {
+                await document.exitPictureInPicture();
+            } else {
+                originalTime = (parseInt(minutesInput.value) || 1) * 60;
+                timeLeft = originalTime;
+                isPaused = false;
+                try {
+                    await video.play();
+                    await video.requestPictureInPicture();
+                    subControls.classList.remove('hidden');
+                    mainBtn.innerText = "CLOSE MINI PLAYER";
+                    startTimer();
+                } catch (e) { console.error(e); }
+            }
+        }
+
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (!isPaused && timeLeft > 0) {
+                    timeLeft--;
+                    draw();
+                }
+            }, 1000);
+            draw();
+        }
+
+        mainBtn.onclick = launchTimer;
+        pauseBtn.onclick = () => {
+            isPaused = !isPaused;
+            pauseBtn.innerText = isPaused ? "RESUME" : "PAUSE";
+            draw();
+        };
+        resetBtn.onclick = () => { timeLeft = originalTime; draw(); };
+
+        document.querySelectorAll('.color-swatch').forEach(swatch => {
+            swatch.onclick = () => {
+                document.querySelector('.color-swatch.active').classList.remove('active');
+                swatch.classList.add('active');
+                themeColor = swatch.dataset.color;
+                document.documentElement.style.setProperty('--theme-color', themeColor);
+                draw();
+            };
+        });
+
+        video.addEventListener('leavepictureinpicture', () => {
+            subControls.classList.add('hidden');
+            mainBtn.innerText = "LAUNCH MINI PLAYER";
+            clearInterval(timerInterval);
+        });
+
+        // Init
+        draw();
+    </script>
+</body>
+</html>
