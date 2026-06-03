@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto-Fit Fullscreen Text</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* Container that forces the textarea to fill the screen */
+        .container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        /* The text box itself */
+        textarea {
+            width: 100%;
+            height: 100%;
+            border: none;
+            outline: none;
+            resize: none;
+            background: transparent;
+            color: #000000;
+            text-align: center;
+            font-weight: bold;
+            /* Flex-like centering for text inside textarea (supported in modern browsers) */
+            display: flex;
+            align-content: center;
+            justify-content: center;
+        }
+
+        /* Small, subtle clear button */
+        .clear-btn {
+            position: fixed;
+            bottom: 15px;
+            right: 15px;
+            padding: 5px 10px;
+            font-size: 12px;
+            background-color: #f0f0f0;
+            color: #333;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            opacity: 0.4;
+            transition: opacity 0.2s ease;
+            user-select: none;
+        }
+
+        .clear-btn:hover {
+            opacity: 1;
+            background-color: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="container">
+        <textarea id="textbox" placeholder="Type here..." autofocus></textarea>
+    </div>
+
+    <button class="clear-btn" id="clearBtn" title="Shortcut: Esc or Ctrl+Del">Clear</button>
+
+    <script>
+        const textbox = document.getElementById('textbox');
+        const container = document.getElementById('container');
+        const clearBtn = document.getElementById('clearBtn');
+
+        // Function to dynamically adjust font size to fit the container
+        function adjustFontSize() {
+            // Start with a massive font size
+            let min = 1;
+            let max = 500; 
+            let optimalSize = min;
+
+            // Simple binary search to find the maximum font size that doesn't overflow
+            while (min <= max) {
+                let mid = Math.floor((min + max) / 2);
+                textbox.style.fontSize = mid + 'px';
+
+                // Check if the text is overflowing the visible area
+                if (textbox.scrollHeight <= container.clientHeight && textbox.scrollWidth <= container.clientWidth) {
+                    optimalSize = mid;
+                    min = mid + 1; // Try larger
+                } else {
+                    max = mid - 1; // Try smaller
+                }
+            }
+
+            // Apply the perfect fit size
+            textbox.style.fontSize = optimalSize + 'px';
+        }
+
+        // Clear text function
+        function clearText() {
+            textbox.value = '';
+            textbox.focus();
+            adjustFontSize();
+        }
+
+        // Event Listeners
+        textbox.addEventListener('input', adjustFontSize);
+        clearBtn.addEventListener('click', clearText);
+
+        // Adjust font size if the browser window itself is resized
+        const resizeObserver = new ResizeObserver(() => {
+            adjustFontSize();
+        });
+        resizeObserver.observe(container);
+
+        // Keyboard Shortcuts
+        window.addEventListener('keydown', (e) => {
+            // 1. Press 'Escape' to clear
+            // 2. Press 'Ctrl + Delete' or 'Cmd + Backspace' (Mac) to clear
+            if (
+                e.key === 'Escape' || 
+                (e.ctrlKey && e.key === 'Delete') || 
+                (e.metaKey && e.key === 'Backspace')
+            ) {
+                e.preventDefault();
+                clearText();
+            }
+        });
+
+        // Initial adjustment on load
+        adjustFontSize();
+    </script>
+</body>
+</html>
