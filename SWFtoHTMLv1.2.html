@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flash to HTML5 Fullscreen Bundler</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+    <style>
+        #drop-zone.dragover {
+            border-color: #3b82f6;
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        /* Style for the preview player to keep it responsive within the UI */
+        ruffle-player {
+            width: 100% !important;
+            height: 100% !important;
+            display: block;
+        }
+    </style>
+</head>
+<body class="bg-zinc-950 text-zinc-200 min-h-screen flex flex-col items-center p-4 md:p-8 font-sans">
+
+    <div class="max-w-4xl w-full space-y-8">
+        <header class="text-center space-y-2">
+            <div class="inline-block bg-blue-600/10 text-blue-400 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest mb-2">
+                Legacy Tool
+            </div>
+            <h1 class="text-4xl font-bold tracking-tight text-white">SWF to HTML5 Bundler</h1>
+            <p class="text-zinc-400 text-balance">Create self-contained, full-screen HTML5 packages from your Flash files.</p>
+        </header>
+
+        <!-- Drop Zone -->
+        <div id="drop-zone" class="border-2 border-dashed border-zinc-700 rounded-2xl p-12 transition-all flex flex-col items-center justify-center space-y-4 cursor-pointer hover:border-zinc-500 hover:bg-zinc-900/50">
+            <div class="bg-zinc-900 p-4 rounded-full">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-blue-500"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+            </div>
+            <div class="text-center">
+                <p class="text-lg font-medium text-zinc-300">Drop your .swf file here</p>
+                <p class="text-sm text-zinc-500 font-mono mt-1">Accepts .swf only</p>
+            </div>
+            <input type="file" id="file-input" accept=".swf" class="hidden">
+        </div>
+
+        <!-- Preview & Export Area -->
+        <div id="preview-container" class="hidden space-y-4">
+            <div class="flex flex-col sm:flex-row items-center justify-between bg-zinc-900 p-4 rounded-xl border border-zinc-800 gap-4">
+                <div class="flex items-center w-full">
+                    <div class="bg-blue-600/20 p-2 rounded-lg mr-4 text-blue-400 shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    </div>
+                    <div class="overflow-hidden">
+                        <p id="filename-display" class="font-semibold text-white truncate">file_name.swf</p>
+                        <p id="filesize-display" class="text-xs text-zinc-500">0.00 MB</p>
+                    </div>
+                </div>
+                <div class="flex gap-2 w-full sm:w-auto">
+                    <button id="reset-btn" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-2.5 rounded-lg font-medium transition-all text-sm">
+                        Clear
+                    </button>
+                    <button id="export-btn" class="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-lg font-bold transition-all shadow-lg active:scale-95 text-sm">
+                        Export Fullscreen HTML
+                    </button>
+                </div>
+            </div>
+
+            <div id="player-wrapper" class="w-full aspect-video glass rounded-2xl overflow-hidden relative shadow-2xl border border-zinc-800 bg-black">
+                <!-- Ruffle will inject player here -->
+            </div>
+            <p class="text-center text-xs text-zinc-500 italic">This is a constrained preview. The exported file will be full-screen.</p>
+        </div>
+
+        <section class="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm text-zinc-500 pt-8 border-t border-zinc-900">
+            <div>
+                <h3 class="text-zinc-300 font-bold mb-1 uppercase tracking-wider text-[10px]">HTML5 Wrapping</h3>
+                <p>The exported file bundles your SWF as a Base64 string within a responsive HTML5 wrapper.</p>
+            </div>
+            <div>
+                <h3 class="text-zinc-300 font-bold mb-1 uppercase tracking-wider text-[10px]">Fullscreen API</h3>
+                <p>The output uses CSS flexbox and viewport units (100vh/vw) to ensure the content fills the entire browser window.</p>
+            </div>
+            <div>
+                <h3 class="text-zinc-300 font-bold mb-1 uppercase tracking-wider text-[10px]">Standalone</h3>
+                <p>No local server is required to run the exported file. Just open it in any modern browser.</p>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const previewContainer = document.getElementById('preview-container');
+        const playerWrapper = document.getElementById('player-wrapper');
+        const exportBtn = document.getElementById('export-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const filenameDisplay = document.getElementById('filename-display');
+        const filesizeDisplay = document.getElementById('filesize-display');
+
+        let currentSwfData = null;
+        let currentFilename = "";
+
+        // File Selection Logic
+        dropZone.onclick = () => fileInput.click();
+        fileInput.onchange = (e) => handleFile(e.target.files[0]);
+
+        resetBtn.onclick = () => {
+            currentSwfData = null;
+            previewContainer.classList.add('hidden');
+            dropZone.classList.remove('hidden');
+            playerWrapper.innerHTML = '';
+            fileInput.value = '';
+        };
+
+        dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('dragover'); };
+        dropZone.ondragleave = () => dropZone.classList.remove('dragover');
+        dropZone.ondrop = (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFile(e.dataTransfer.files[0]);
+        };
+
+        async function handleFile(file) {
+            if (!file || !file.name.toLowerCase().endsWith('.swf')) {
+                return;
+            }
+
+            currentFilename = file.name;
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                currentSwfData = e.target.result;
+                
+                dropZone.classList.add('hidden');
+                previewContainer.classList.remove('hidden');
+                filenameDisplay.innerText = file.name;
+                filesizeDisplay.innerText = (file.size / (1024 * 1024)).toFixed(2) + " MB";
+
+                loadPreview(currentSwfData);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function loadPreview(dataUrl) {
+            playerWrapper.innerHTML = '';
+            const ruffle = window.RufflePlayer.newest();
+            const player = ruffle.createPlayer();
+            playerWrapper.appendChild(player);
+            player.load({ url: dataUrl });
+        }
+
+        exportBtn.onclick = () => {
+            if (!currentSwfData) return;
+
+            const baseName = currentFilename.replace('.swf', '');
+            
+            // This template ensures absolute full screen with no scrollbars
+            const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>${baseName} - Fullscreen Player</title>
+    <style>
+        /* Force the player to occupy the entire screen */
+        body, html { 
+            margin: 0; 
+            padding: 0; 
+            width: 100%; 
+            height: 100%; 
+            background: #000; 
+            overflow: hidden; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #container { 
+            width: 100vw; 
+            height: 100vh; 
+            display: flex;
+        }
+        /* Ruffle custom element styling */
+        ruffle-player {
+            width: 100% !important;
+            height: 100% !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <script src="https://unpkg.com/@ruffle-rs/ruffle"><\/script>
+    <script>
+        window.addEventListener("DOMContentLoaded", () => {
+            const ruffle = window.RufflePlayer.newest();
+            const player = ruffle.createPlayer();
+            const container = document.getElementById("container");
+            container.appendChild(player);
+            
+            player.load({
+                url: "${currentSwfData}",
+                allowScriptAccess: true,
+                backgroundColor: "#000000",
+                letterbox: "on" // Ensures the aspect ratio is maintained while filling the screen
+            }).then(() => {
+                console.log("Flash content loaded successfully!");
+            }).catch((err) => {
+                console.error("Ruffle failed to load:", err);
+            });
+        });
+    <\/script>
+</body>
+</html>`;
+
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${baseName}_fullscreen.html`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
+    </script>
+</body>
+</html>

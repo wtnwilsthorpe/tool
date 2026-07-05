@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flash Batch Bundler (Fullscreen)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+    <style>
+        #drop-zone.dragover {
+            border-color: #3b82f6;
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .file-card {
+            transition: all 0.2s ease;
+        }
+        .file-card:hover {
+            background-color: rgba(255, 255, 255, 0.03);
+        }
+        /* Custom scrollbar for the list */
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 10px; }
+        
+        ruffle-player {
+            width: 100% !important;
+            height: 100% !important;
+            display: block;
+        }
+    </style>
+</head>
+<body class="bg-zinc-950 text-zinc-200 min-h-screen flex flex-col items-center p-4 md:p-8 font-sans">
+
+    <div class="max-w-5xl w-full space-y-6">
+        <header class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
+                    <span class="bg-blue-600 p-1.5 rounded-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                    </span>
+                    Batch SWF Bundler
+                </h1>
+                <p class="text-zinc-400 mt-1">Convert multiple Flash files into standalone fullscreen HTML5 apps.</p>
+            </div>
+            <div id="batch-actions" class="hidden flex gap-2">
+                <button id="clear-all-btn" class="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white transition-colors">Clear All</button>
+                <button id="export-all-btn" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-lg font-bold transition-all shadow-lg text-sm flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                    Export All (.zip style)
+                </button>
+            </div>
+        </header>
+
+        <!-- Drop Zone -->
+        <div id="drop-zone" class="border-2 border-dashed border-zinc-800 rounded-2xl p-10 transition-all flex flex-col items-center justify-center space-y-3 cursor-pointer hover:border-blue-500/50 hover:bg-zinc-900/30">
+            <div class="bg-blue-600/10 p-4 rounded-full text-blue-500">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+            </div>
+            <div class="text-center">
+                <p class="text-lg font-medium text-zinc-300">Drag multiple .swf files here</p>
+                <p class="text-sm text-zinc-500 mt-1">Files are processed locally in your browser.</p>
+            </div>
+            <input type="file" id="file-input" accept=".swf" multiple class="hidden">
+        </div>
+
+        <!-- Main Workspace -->
+        <div id="workspace" class="grid grid-cols-1 lg:grid-cols-3 gap-6 hidden">
+            <!-- List Panel -->
+            <div class="lg:col-span-1 space-y-4">
+                <div class="bg-zinc-900/50 rounded-2xl border border-zinc-800 flex flex-col h-[500px]">
+                    <div class="p-4 border-b border-zinc-800 flex justify-between items-center">
+                        <span class="text-xs font-bold uppercase tracking-widest text-zinc-500">Queue</span>
+                        <span id="queue-count" class="bg-zinc-800 text-zinc-300 text-[10px] px-2 py-0.5 rounded-full">0 Files</span>
+                    </div>
+                    <div id="file-list" class="flex-1 overflow-y-auto p-2 space-y-1 custom-scroll">
+                        <!-- File items injected here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Preview Panel -->
+            <div class="lg:col-span-2 space-y-4">
+                <div id="preview-placeholder" class="h-full flex flex-col items-center justify-center bg-zinc-900/20 border border-zinc-800 border-dashed rounded-2xl text-zinc-600 p-12 text-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="mb-4 opacity-20"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+                    <p>Select a file from the queue to preview</p>
+                </div>
+                
+                <div id="active-preview" class="hidden flex flex-col h-full space-y-4">
+                    <div class="bg-zinc-900 p-4 rounded-xl border border-zinc-800 flex justify-between items-center">
+                        <div class="truncate mr-4">
+                            <h3 id="current-title" class="font-bold text-white truncate">Filename.swf</h3>
+                            <p id="current-size" class="text-xs text-zinc-500">0.00 MB</p>
+                        </div>
+                        <button id="single-export-btn" class="bg-zinc-100 text-zinc-900 px-4 py-2 rounded-lg font-bold text-sm hover:bg-white transition-all shrink-0">
+                            Download This File
+                        </button>
+                    </div>
+                    <div id="player-wrapper" class="w-full aspect-video glass rounded-2xl overflow-hidden relative shadow-2xl border border-zinc-800 bg-black">
+                        <!-- Ruffle will inject player here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const workspace = document.getElementById('workspace');
+        const batchActions = document.getElementById('batch-actions');
+        const fileList = document.getElementById('file-list');
+        const queueCount = document.getElementById('queue-count');
+        const playerWrapper = document.getElementById('player-wrapper');
+        const previewPlaceholder = document.getElementById('preview-placeholder');
+        const activePreview = document.getElementById('active-preview');
+        const currentTitle = document.getElementById('current-title');
+        const currentSize = document.getElementById('current-size');
+        const singleExportBtn = document.getElementById('single-export-btn');
+        const exportAllBtn = document.getElementById('export-all-btn');
+        const clearAllBtn = document.getElementById('clear-all-btn');
+
+        let filesQueue = []; // Array of { id, name, size, data, html }
+        let selectedFileId = null;
+
+        // File Selection Logic
+        dropZone.onclick = () => fileInput.click();
+        fileInput.onchange = (e) => handleFiles(e.target.files);
+
+        dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('dragover'); };
+        dropZone.ondragleave = () => dropZone.classList.remove('dragover');
+        dropZone.ondrop = (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        };
+
+        function handleFiles(files) {
+            const swfFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.swf'));
+            if (swfFiles.length === 0) return;
+
+            workspace.classList.remove('hidden');
+            batchActions.classList.remove('hidden');
+
+            swfFiles.forEach(file => {
+                const id = crypto.randomUUID();
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const fileData = {
+                        id,
+                        name: file.name,
+                        size: (file.size / (1024 * 1024)).toFixed(2) + " MB",
+                        data: e.target.result,
+                        html: generateFullscreenHTML(file.name, e.target.result)
+                    };
+                    filesQueue.push(fileData);
+                    addToFileList(fileData);
+                    updateStats();
+                };
+                reader.readAsDataURL(file);
+            });
+            fileInput.value = '';
+        }
+
+        function addToFileList(fileData) {
+            const div = document.createElement('div');
+            div.className = 'file-card p-3 rounded-xl flex items-center justify-between cursor-pointer border border-transparent';
+            div.dataset.id = fileData.id;
+            div.innerHTML = `
+                <div class="flex items-center gap-3 truncate">
+                    <div class="w-8 h-8 rounded bg-zinc-800 flex items-center justify-center text-blue-500 shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    </div>
+                    <div class="truncate">
+                        <p class="text-sm font-medium text-zinc-200 truncate">${fileData.name}</p>
+                        <p class="text-[10px] text-zinc-500">${fileData.size}</p>
+                    </div>
+                </div>
+                <button class="remove-btn p-1 text-zinc-600 hover:text-red-400 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            `;
+
+            div.onclick = (e) => {
+                if (e.target.closest('.remove-btn')) {
+                    removeFile(fileData.id);
+                } else {
+                    selectFile(fileData.id);
+                }
+            };
+
+            fileList.appendChild(div);
+        }
+
+        function selectFile(id) {
+            const fileData = filesQueue.find(f => f.id === id);
+            if (!fileData) return;
+
+            selectedFileId = id;
+            document.querySelectorAll('.file-card').forEach(el => {
+                el.classList.toggle('bg-blue-600/10', el.dataset.id === id);
+                el.classList.toggle('border-blue-500/30', el.dataset.id === id);
+            });
+
+            previewPlaceholder.classList.add('hidden');
+            activePreview.classList.remove('hidden');
+            currentTitle.innerText = fileData.name;
+            currentSize.innerText = fileData.size;
+
+            // Load Ruffle
+            playerWrapper.innerHTML = '';
+            const ruffle = window.RufflePlayer.newest();
+            const player = ruffle.createPlayer();
+            playerWrapper.appendChild(player);
+            player.load({ url: fileData.data });
+        }
+
+        function removeFile(id) {
+            filesQueue = filesQueue.filter(f => f.id !== id);
+            const el = fileList.querySelector(`[data-id="${id}"]`);
+            if (el) el.remove();
+            
+            if (selectedFileId === id) {
+                selectedFileId = null;
+                activePreview.classList.add('hidden');
+                previewPlaceholder.classList.remove('hidden');
+                playerWrapper.innerHTML = '';
+            }
+            
+            updateStats();
+            if (filesQueue.length === 0) {
+                workspace.classList.add('hidden');
+                batchActions.classList.add('hidden');
+                dropZone.classList.remove('hidden');
+            }
+        }
+
+        function updateStats() {
+            queueCount.innerText = `${filesQueue.length} File${filesQueue.length === 1 ? '' : 's'}`;
+        }
+
+        function generateFullscreenHTML(filename, dataUrl) {
+            const baseName = filename.replace('.swf', '');
+            return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>${baseName}</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        #container { width: 100vw; height: 100vh; display: flex; }
+        ruffle-player { width: 100% !important; height: 100% !important; }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <script src="https://unpkg.com/@ruffle-rs/ruffle"><\/script>
+    <script>
+        window.addEventListener("DOMContentLoaded", () => {
+            const ruffle = window.RufflePlayer.newest();
+            const player = ruffle.createPlayer();
+            document.getElementById("container").appendChild(player);
+            player.load({
+                url: "${dataUrl}",
+                allowScriptAccess: true,
+                backgroundColor: "#000000",
+                letterbox: "on"
+            });
+        });
+    <\/script>
+</body>
+</html>`;
+        }
+
+        function triggerDownload(content, filename) {
+            const blob = new Blob([content], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        singleExportBtn.onclick = () => {
+            const fileData = filesQueue.find(f => f.id === selectedFileId);
+            if (fileData) {
+                triggerDownload(fileData.html, `${fileData.name.replace('.swf', '')}_fullscreen.html`);
+            }
+        };
+
+        exportAllBtn.onclick = async () => {
+            // Note: Browsers may block multiple simultaneous downloads.
+            // We trigger them with a slight delay to help the browser handle the queue.
+            for (let i = 0; i < filesQueue.length; i++) {
+                const f = filesQueue[i];
+                setTimeout(() => {
+                    triggerDownload(f.html, `${f.name.replace('.swf', '')}_fullscreen.html`);
+                }, i * 300);
+            }
+        };
+
+        clearAllBtn.onclick = () => {
+            filesQueue = [];
+            fileList.innerHTML = '';
+            selectedFileId = null;
+            activePreview.classList.add('hidden');
+            previewPlaceholder.classList.remove('hidden');
+            workspace.classList.add('hidden');
+            batchActions.classList.add('hidden');
+            dropZone.classList.remove('hidden');
+            updateStats();
+        };
+    </script>
+</body>
+</html>
