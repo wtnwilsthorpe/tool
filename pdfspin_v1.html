@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Page Rotator</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #0f172a;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+            padding: 2rem 1rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            width: 100%;
+            max-width: 500px;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: #1e293b;
+            text-align: center;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #334155;
+        }
+
+        input[type="file"], input[type="number"], select {
+            width: 100%;
+            padding: 0.625rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.95rem;
+            background-color: #fff;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input[type="file"] {
+            padding: 0.5rem;
+            cursor: pointer;
+        }
+
+        input:focus, select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .hint {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        button {
+            width: 100%;
+            padding: 0.75rem;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin-top: 1rem;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        button:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
+        }
+
+        #status {
+            margin-top: 1rem;
+            padding: 0.75rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            text-align: center;
+            display: none;
+        }
+
+        .status-success {
+            background-color: #dcfce7;
+            color: #166534;
+        }
+
+        .status-error {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-info {
+            background-color: #e0f2fe;
+            color: #0369a1;
+        }
+    </style>
+    <!-- load pdf-lib from a reliable CDN for client-side PDF modification -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+</head>
+<body>
+
+<div class="container">
+    <h1>PDF Page Rotator</h1>
+    <p class="subtitle">Rotate a specific horizontal page to vertical layout (90° clockwise)</p>
+
+    <div class="form-group">
+        <label for="pdf-file">Select PDF File</label>
+        <input type="file" id="pdf-file" accept=".pdf">
+    </div>
+
+    <div class="form-group">
+        <label for="page-number">Page Number to Rotate</label>
+        <input type="number" id="page-number" value="1" min="1">
+        <p class="hint">Defaults to Page 1.</p>
+    </div>
+
+    <div class="form-group">
+        <label for="rotation-angle">Rotation Direction</label>
+        <select id="rotation-angle">
+            <option value="90">90° Clockwise</option>
+            <option value="270">90° Counter-Clockwise</option>
+            <option value="180">180° Flip</option>
+        </select>
+    </div>
+
+    <button id="process-btn">Rotate & Download PDF</button>
+
+    <div id="status"></div>
+</div>
+
+<script>
+    const fileInput = document.getElementById('pdf-file');
+    const pageInput = document.getElementById('page-number');
+    const rotationSelect = document.getElementById('rotation-angle');
+    const processBtn = document.getElementById('process-btn');
+    const statusDiv = document.getElementById('status');
+
+    function showStatus(message, type) {
+        statusDiv.style.display = 'block';
+        statusDiv.className = ''; // reset classes
+        statusDiv.classList.add(`status-${type}`);
+        statusDiv.textContent = message;
+    }
+
+    processBtn.addEventListener('click', async () => {
+        const file = fileInput.files[0];
+        const pageNum = parseInt(pageInput.value, 10);
+        const rotationDegrees = parseInt(rotationSelect.value, 10);
+
+        if (!file) {
+            showStatus('Please select a PDF file first.', 'error');
+            return;
+        }
+
+        if (isNaN(pageNum) || pageNum < 1) {
+            showStatus('Please enter a valid page number (1 or greater).', 'error');
+            return;
+        }
+
+        try {
+            showStatus('Processing PDF...', 'info');
+            processBtn.disabled = true;
+
+            // Read file into ArrayBuffer
+            const fileReader = new FileReader();
+            fileReader.onload = async function() {
+                try {
+                    const arrayBuffer = this.result;
+                    
+                    // Load the PDF Document via pdf-lib
+                    const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+                    const pages = pdfDoc.getPages();
+                    const totalPages = pages.length;
+
+                    if (pageNum > totalPages) {
+                        showStatus(`Error: The PDF only has ${totalPages} pages. You requested page ${pageNum}.`, 'error');
+                        processBtn.disabled = false;
+                        return;
+                    }
+
+                    // Get the specific page (0-indexed in pdf-lib)
+                    const targetPage = pages[pageNum - 1];
+
+                    // Get current rotation, default to 0 if undefined
+                    const currentRotation = targetPage.getRotation().angle || 0;
+                    
+                    // Calculate new rotation alignment
+                    const newRotation = (currentRotation + rotationDegrees) % 360;
+                    
+                    // Apply rotation
+                    targetPage.setRotation(PDFLib.degrees(newRotation));
+
+                    // Serialize the PDF document to bytes
+                    const pdfBytes = await pdfDoc.save();
+
+                    // Trigger the download of the modified PDF
+                    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    
+                    // Append suffix to original name or use generic name
+                    const originalName = file.name.replace(/\.[^/.]+$/, "");
+                    link.download = `${originalName}_rotated_page_${pageNum}.pdf`;
+                    
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+
+                    showStatus(`Success! Page ${pageNum} has been rotated.`, 'success');
+                } catch (innerError) {
+                    console.error(innerError);
+                    showStatus('An error occurred while manipulating the PDF. The file might be encrypted or corrupted.', 'error');
+                } finally {
+                    processBtn.disabled = false;
+                }
+            };
+
+            fileReader.readAsArrayBuffer(file);
+
+        } catch (error) {
+            console.error(error);
+            showStatus('Failed to read the file.', 'error');
+            processBtn.disabled = false;
+        }
+    });
+</script>
+
+</body>
+</html>
