@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pic-Pop PiP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background-color: #020617;
+            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            margin: 0;
+            overflow-x: hidden;
+        }
+
+        .glass-ui {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+        }
+
+        .drop-zone {
+            border: 2px dashed rgba(255, 255, 255, 0.15);
+            transition: all 0.2s ease-in-out;
+        }
+
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: #10b981;
+            background-color: rgba(16, 185, 129, 0.05);
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center p-4 min-h-screen">
+
+    <div class="glass-ui p-6 sm:p-8 w-full max-w-md my-auto relative z-10 text-center">
+        <!-- Title Header -->
+        <div class="mb-6">
+            <h1 class="text-2xl font-black tracking-tight text-white uppercase italic">Pic-Pop</h1>
+            <p class="text-xs text-slate-400 font-medium mt-1">Paste or drop an image to pop it into a floating window.</p>
+        </div>
+
+        <!-- Drop & Paste Zone -->
+        <div id="drop-zone" class="drop-zone relative rounded-2xl p-6 mb-6 cursor-pointer flex flex-col items-center justify-center min-h-[220px] overflow-hidden bg-slate-950/50 group">
+            
+            <!-- Default Prompt -->
+            <div id="drop-prompt" class="flex flex-col items-center transition-all">
+                <div class="w-14 h-14 rounded-2xl bg-slate-800/80 border border-slate-700/60 flex items-center justify-center text-slate-300 mb-3 group-hover:scale-105 group-hover:border-emerald-500/50 group-hover:text-emerald-400 transition-all">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                </div>
+                <p class="text-xs sm:text-sm font-semibold text-slate-200 mb-1">Press <kbd class="px-2 py-0.5 text-[11px] font-bold text-slate-200 bg-slate-800 border border-slate-700 rounded-md">Ctrl + V</kbd> to paste</p>
+                <p class="text-[11px] text-slate-500">or drop screenshot / click to browse</p>
+            </div>
+
+            <!-- Preview Image -->
+            <img id="image-preview" class="hidden absolute inset-0 w-full h-full object-contain p-2 z-10 pointer-events-none" alt="Preview" />
+            
+            <!-- Hidden File Input -->
+            <input type="file" id="file-input" accept="image/*" class="hidden" />
+        </div>
+
+        <!-- Action Controls -->
+        <div class="space-y-3">
+            <button id="main-btn" disabled class="w-full py-4 rounded-xl font-black text-xs tracking-widest transition-all bg-slate-800 text-slate-500 cursor-not-allowed uppercase flex items-center justify-center space-x-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                <span id="btn-text">LAUNCH PIP POPUP</span>
+            </button>
+
+            <button id="clear-btn" class="hidden w-full py-2.5 rounded-xl font-bold text-xs text-slate-400 hover:text-white bg-slate-900/40 hover:bg-slate-800/60 transition-all border border-slate-800">
+                Clear Image
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const dropZone = document.getElementById('drop-zone');
+        const dropPrompt = document.getElementById('drop-prompt');
+        const fileInput = document.getElementById('file-input');
+        const imagePreview = document.getElementById('image-preview');
+        const mainBtn = document.getElementById('main-btn');
+        const btnText = document.getElementById('btn-text');
+        const clearBtn = document.getElementById('clear-btn');
+
+        let currentImageDataUrl = null;
+        let imageWidth = 500;
+        let imageHeight = 400;
+        let pipWindowInstance = null;
+
+        // Clipboard Paste Listener (Ctrl + V)
+        document.addEventListener('paste', (e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (let item of items) {
+                if (item.type.startsWith('image/')) {
+                    processImageFile(item.getAsFile());
+                    break;
+                }
+            }
+        });
+
+        // Click & File Selection Listener
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                processImageFile(e.target.files[0]);
+            }
+        });
+
+        // Drag & Drop Handlers
+        ['dragenter', 'dragover'].forEach(name => {
+            dropZone.addEventListener(name, (e) => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(name => {
+            dropZone.addEventListener(name, (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+            });
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                processImageFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        function processImageFile(file) {
+            if (!file || !file.type.startsWith('image/')) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    currentImageDataUrl = event.target.result;
+                    imageWidth = img.naturalWidth || 500;
+                    imageHeight = img.naturalHeight || 400;
+
+                    // Update Main UI Preview
+                    imagePreview.src = currentImageDataUrl;
+                    dropPrompt.classList.add('hidden');
+                    imagePreview.classList.remove('hidden');
+                    clearBtn.classList.remove('hidden');
+
+                    // Activate Launch Button
+                    mainBtn.disabled = false;
+                    mainBtn.classList.remove('bg-slate-800', 'text-slate-500', 'cursor-not-allowed');
+                    mainBtn.classList.add('bg-white', 'text-black', 'hover:bg-emerald-400', 'cursor-pointer');
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function launchDocumentPiP() {
+            // Close existing window if open
+            if (pipWindowInstance && !pipWindowInstance.closed) {
+                pipWindowInstance.close();
+                pipWindowInstance = null;
+                btnText.innerText = "LAUNCH PIP POPUP";
+                return;
+            }
+
+            if (!currentImageDataUrl) return;
+
+            // Cap initial window size to reasonable dimensions while maintaining aspect ratio
+            const maxDim = 600;
+            let targetW = imageWidth;
+            let targetH = imageHeight;
+            
+            if (targetW > maxDim || targetH > maxDim) {
+                const ratio = Math.min(maxDim / targetW, maxDim / targetH);
+                targetW = Math.round(targetW * ratio);
+                targetH = Math.round(targetH * ratio);
+            }
+
+            try {
+                if ('documentPictureInPicture' in window) {
+                    // Open official Document Picture-in-Picture window
+                    pipWindowInstance = await documentPictureInPicture.requestWindow({
+                        width: targetW,
+                        height: targetH
+                    });
+                } else {
+                    // Fallback to popup window if Document PiP isn't supported
+                    const left = (screen.width - targetW) / 2;
+                    const top = (screen.height - targetH) / 2;
+                    pipWindowInstance = window.open('', '_blank', `width=${targetW},height=${targetH},top=${top},left=${left},resizable=yes,scrollbars=no,status=no,toolbar=no,menubar=no,location=no`);
+                }
+
+                if (!pipWindowInstance) return;
+
+                const pipDoc = pipWindowInstance.document;
+
+                // Set blank title on the window header bar
+                pipDoc.title = "";
+
+                // Inject full-bleed viewport styling
+                pipDoc.body.style.margin = "0";
+                pipDoc.body.style.padding = "0";
+                pipDoc.body.style.backgroundColor = "#000000";
+                pipDoc.body.style.overflow = "hidden";
+                pipDoc.body.style.width = "100vw";
+                pipDoc.body.style.height = "100vh";
+                pipDoc.body.style.display = "flex";
+                pipDoc.body.style.alignItems = "center";
+                pipDoc.body.style.justifyContent = "center";
+
+                // Add full-contain clean image tag (no overlay elements)
+                const imgEl = pipDoc.createElement('img');
+                imgEl.src = currentImageDataUrl;
+                imgEl.style.width = "100%";
+                imgEl.style.height = "100%";
+                imgEl.style.objectFit = "contain";
+                imgEl.style.display = "block";
+                
+                pipDoc.body.appendChild(imgEl);
+
+                // Update launch button text
+                btnText.innerText = "CLOSE PIP POPUP";
+
+                // Reset button text when user closes window via window frame close button
+                pipWindowInstance.addEventListener('unload', () => {
+                    pipWindowInstance = null;
+                    btnText.innerText = "LAUNCH PIP POPUP";
+                });
+
+            } catch (err) {
+                console.error("Failed to launch Document PiP:", err);
+            }
+        }
+
+        mainBtn.onclick = launchDocumentPiP;
+
+        // Reset & Clear State
+        clearBtn.onclick = () => {
+            currentImageDataUrl = null;
+            imagePreview.src = '';
+            imagePreview.classList.add('hidden');
+            dropPrompt.classList.remove('hidden');
+            clearBtn.classList.add('hidden');
+
+            mainBtn.disabled = true;
+            btnText.innerText = "LAUNCH PIP POPUP";
+            mainBtn.className = "w-full py-4 rounded-xl font-black text-xs tracking-widest transition-all bg-slate-800 text-slate-500 cursor-not-allowed uppercase flex items-center justify-center space-x-2";
+
+            if (pipWindowInstance && !pipWindowInstance.closed) {
+                pipWindowInstance.close();
+                pipWindowInstance = null;
+            }
+        };
+    </script>
+</body>
+</html>
