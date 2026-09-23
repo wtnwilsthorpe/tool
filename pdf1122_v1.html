@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Page Duplicator (1,1,2,2)</title>
+  <!-- Load pdf-lib from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 500px;
+      margin: 50px auto;
+      padding: 20px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    h2 {
+      margin-top: 0;
+      color: #1a202c;
+    }
+    .file-input {
+      margin: 20px 0;
+    }
+    button {
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      font-size: 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      width: 100%;
+    }
+    button:hover {
+      background-color: #1d4ed8;
+    }
+    button:disabled {
+      background-color: #94a3b8;
+      cursor: not-allowed;
+    }
+    #status {
+      margin-top: 15px;
+      font-size: 14px;
+      color: #475569;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Duplicate PDF Pages (1,1,2,2)</h2>
+  <p>Select a 2-page PDF file to duplicate each page twice.</p>
+
+  <div class="file-input">
+    <input type="file" id="pdfFile" accept="application/pdf">
+  </div>
+
+  <button id="processBtn" onclick="duplicatePages()">Process and Download PDF</button>
+
+  <div id="status"></div>
+
+  <script>
+    async function duplicatePages() {
+      const fileInput = document.getElementById('pdfFile');
+      const statusDiv = document.getElementById('status');
+      const processBtn = document.getElementById('processBtn');
+
+      if (!fileInput.files.length) {
+        statusDiv.textContent = 'Please select a PDF file first.';
+        statusDiv.style.color = '#dc2626';
+        return;
+      }
+
+      const file = fileInput.files[0];
+      statusDiv.textContent = 'Processing PDF...';
+      statusDiv.style.color = '#475569';
+      processBtn.disabled = true;
+
+      try {
+        const fileArrayBuffer = await file.arrayBuffer();
+
+        // Load the original PDF document
+        const srcDoc = await PDFLib.PDFDocument.load(fileArrayBuffer);
+        const pageCount = srcDoc.getPageCount();
+
+        if (pageCount < 2) {
+          throw new Error(`The selected PDF only has ${pageCount} page(s). Please select a PDF with at least 2 pages.`);
+        }
+
+        // Create a new blank PDF document
+        const pdfDoc = await PDFLib.PDFDocument.create();
+
+        // Copy indices 0 (Page 1) and 1 (Page 2) in sequence: [0, 0, 1, 1]
+        const copiedPages = await pdfDoc.copyPages(srcDoc, [0, 0, 1, 1]);
+
+        // Add all copied pages to the new document
+        copiedPages.forEach((page) => pdfDoc.addPage(page));
+
+        // Serialize the document to bytes
+        const pdfBytes = await pdfDoc.save();
+
+        // Trigger automatic download
+        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = file.name.replace('.pdf', '_1122.pdf');
+        link.click();
+
+        statusDiv.textContent = 'Success! Your modified PDF has been downloaded.';
+        statusDiv.style.color = '#16a34a';
+      } catch (err) {
+        statusDiv.textContent = `Error: ${err.message}`;
+        statusDiv.style.color = '#dc2626';
+      } finally {
+        processBtn.disabled = false;
+      }
+    }
+  </script>
+
+</body>
+</html>
