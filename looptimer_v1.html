@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recurring Interval Timer</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Courier New', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        .invert-theme {
+            filter: invert(100%);
+            background-color: #000 !important;
+        }
+        /* Custom glow effect for timer pulse */
+        .pulse-glow {
+            animation: pulse-ring 1s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.98); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(0.98); }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col justify-between font-sans transition-colors duration-500">
+
+    <!-- Header / Navigation -->
+    <header class="w-full max-w-4xl mx-auto p-6 flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-xl shadow-lg border border-slate-700">
+                ⌛
+            </div>
+            <h1 class="text-xl font-bold tracking-tight">LoopTimer</h1>
+        </div>
+        <!-- Stats summary badge -->
+        <div class="flex items-center space-x-2 bg-slate-200/60 dark:bg-slate-800/60 px-4 py-2 rounded-full text-sm font-medium">
+            <span class="text-slate-500">Intervals completed:</span>
+            <span id="completedCount" class="font-bold text-indigo-600 dark:text-indigo-400">0</span>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="w-full max-w-xl mx-auto px-4 py-6 flex-1 flex flex-col justify-center items-center">
+        
+        <!-- Timer Card -->
+        <div class="w-full bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-2xl border border-slate-200/80 dark:border-slate-800 flex flex-col items-center space-y-8 relative overflow-hidden transition-all duration-300">
+            
+            <!-- Visual Progress Circle / Display -->
+            <div class="relative w-64 h-64 sm:w-72 sm:h-72 flex items-center justify-center">
+                <!-- SVG Progress Ring -->
+                <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                    <circle 
+                        cx="50" cy="50" r="44" 
+                        stroke="currentColor" 
+                        stroke-width="6" 
+                        fill="transparent" 
+                        class="text-slate-200 dark:text-slate-800"
+                    />
+                    <circle 
+                        id="progressRing"
+                        cx="50" cy="50" r="44" 
+                        stroke="currentColor" 
+                        stroke-width="6" 
+                        stroke-dasharray="276.46" 
+                        stroke-dashoffset="0" 
+                        stroke-linecap="round"
+                        fill="transparent" 
+                        class="text-indigo-600 transition-all duration-200"
+                    />
+                </svg>
+
+                <!-- Digital Time Display -->
+                <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+                    <span id="timeDisplay" class="font-mono text-5xl sm:text-6xl font-extrabold tracking-tight">00:10</span>
+                    <span id="statusLabel" class="text-xs uppercase tracking-widest font-bold text-slate-400 mt-2">Ready</span>
+                </div>
+            </div>
+
+            <div id="settingsContainer" class="w-full grid grid-cols-2 gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div class="flex flex-col space-y-1.5">
+                    <label for="intervalValue" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Interval Duration</label>
+                    <input 
+                        type="number" 
+                        id="intervalValue" 
+                        value="10" 
+                        min="1" 
+                        max="3600"
+                        class="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                    >
+                </div>
+                <div class="flex flex-col space-y-1.5">
+                    <label for="intervalUnit" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Time Unit</label>
+                    <select 
+                        id="intervalUnit" 
+                        class="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
+                    >
+                        <option value="seconds">Seconds</option>
+                        <option value="minutes">Minutes</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Options / Toggle Options -->
+            <div class="w-full flex items-center justify-between text-sm px-2 text-slate-600 dark:text-slate-400">
+                <label class="inline-flex items-center cursor-pointer space-x-2">
+                    <input type="checkbox" id="invertToggle" class="sr-only peer" checked>
+                    <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600 relative"></div>
+                    <span class="text-xs font-medium">Invert Colors</span>
+                </label>
+
+                <label class="inline-flex items-center cursor-pointer space-x-2">
+                    <input type="checkbox" id="soundToggle" class="sr-only peer" checked>
+                    <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600 relative"></div>
+                    <span class="text-xs font-medium">Audio Beep</span>
+                </label>
+            </div>
+
+            <div class="w-full flex space-x-3 pt-2">
+                <button 
+                    id="startBtn" 
+                    class="flex-1 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl shadow-lg shadow-indigo-500/30 transition-all active:scale-95 flex items-center justify-center space-x-2"
+                >
+                    <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    <span>Start</span>
+                </button>
+
+                <button 
+                    id="pauseBtn" 
+                    disabled 
+                    class="flex-1 py-4 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-2xl shadow-lg shadow-amber-500/30 opacity-50 cursor-not-allowed transition-all active:scale-95 flex items-center justify-center space-x-2"
+                >
+                    <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                    <span>Pause</span>
+                </button>
+
+                <button 
+                    id="resetBtn" 
+                    class="py-4 px-5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-2xl transition-all active:scale-95 flex items-center justify-center"
+                    title="Reset Timer"
+                >
+                    <svg class="w-5 h-5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                </button>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="w-full max-w-4xl mx-auto p-6 text-center text-xs text-slate-400">
+        Interval timer runs continuously until paused or page is closed. Uses Web Audio API for synthetic audio beeps.
+    </footer>
+
+    <script>
+        // State management
+        let totalIntervalSeconds = 10;
+        let remainingSeconds = 10;
+        let timerInterval = null;
+        let isRunning = false;
+        let completedCount = 0;
+        let isInverted = false;
+
+        // Audio Context initialization for Web Audio API
+        let audioCtx = null;
+
+        // DOM Element Cache
+        const timeDisplay = document.getElementById('timeDisplay');
+        const statusLabel = document.getElementById('statusLabel');
+        const progressRing = document.getElementById('progressRing');
+        const intervalValueInput = document.getElementById('intervalValue');
+        const intervalUnitSelect = document.getElementById('intervalUnit');
+        const startBtn = document.getElementById('startBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const completedCountEl = document.getElementById('completedCount');
+        const invertToggle = document.getElementById('invertToggle');
+        const soundToggle = document.getElementById('soundToggle');
+
+        const RING_CIRCUMFERENCE = 2 * Math.PI * 44; // r = 44
+
+        // Initialize Audio Context on user action (browser requirement)
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // Web Audio API Beep Generator
+        function playBeep(freq = 880, duration = 0.25, type = 'sine') {
+            if (!soundToggle.checked) return;
+            try {
+                initAudio();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+                // Smooth envelope to avoid clicks
+                gain.gain.setValueAtTime(0, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (err) {
+                console.error("Audio playback error:", err);
+            }
+        }
+
+        // Calculate and format duration input to seconds
+        function calculateTotalSeconds() {
+            const rawVal = parseFloat(intervalValueInput.value) || 1;
+            const unit = intervalUnitSelect.value;
+            return unit === 'minutes' ? Math.round(rawVal * 60) : Math.round(rawVal);
+        }
+
+        // Format seconds into MM:SS display
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+
+        // Update progress circle SVG offset
+        function updateProgress() {
+            const progressFraction = remainingSeconds / totalIntervalSeconds;
+            const offset = RING_CIRCUMFERENCE * (1 - progressFraction);
+            progressRing.style.strokeDashoffset = offset;
+        }
+
+        function updateUI() {
+            timeDisplay.textContent = formatTime(remainingSeconds);
+            updateProgress();
+        }
+
+        // Toggle inversion theme
+        function triggerInversion() {
+            if (!invertToggle.checked) return;
+            isInverted = !isInverted;
+            if (isInverted) {
+                document.body.classList.add('invert-theme');
+            } else {
+                document.body.classList.remove('invert-theme');
+            }
+        }
+
+        function handleIntervalComplete() {
+            completedCount++;
+            completedCountEl.textContent = completedCount;
+
+            // Trigger visual and auditory alerts
+            triggerInversion();
+            playBeep(960, 0.35, 'square');
+
+            // Reset loop count
+            remainingSeconds = totalIntervalSeconds;
+            updateUI();
+        }
+
+        function tick() {
+            if (remainingSeconds <= 1) {
+                handleIntervalComplete();
+            } else {
+                remainingSeconds--;
+                updateUI();
+            }
+        }
+
+        // Controls Logic
+        function startTimer() {
+            initAudio();
+            if (isRunning) return;
+
+            // Lock settings during active run
+            intervalValueInput.disabled = true;
+            intervalUnitSelect.disabled = true;
+
+            totalIntervalSeconds = calculateTotalSeconds();
+            if (remainingSeconds > totalIntervalSeconds || remainingSeconds === 0) {
+                remainingSeconds = totalIntervalSeconds;
+            }
+
+            isRunning = true;
+            statusLabel.textContent = 'Counting Down';
+            statusLabel.classList.add('text-indigo-600');
+
+            startBtn.disabled = true;
+            startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+            pauseBtn.disabled = false;
+            pauseBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+
+            updateUI();
+            timerInterval = setInterval(tick, 1000);
+        }
+
+        function pauseTimer() {
+            if (!isRunning) return;
+
+            clearInterval(timerInterval);
+            isRunning = false;
+
+            statusLabel.textContent = 'Paused';
+            statusLabel.classList.remove('text-indigo-600');
+
+            startBtn.disabled = false;
+            startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+
+            pauseBtn.disabled = true;
+            pauseBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+
+        function resetTimer() {
+            pauseTimer();
+
+            // Re-enable inputs
+            intervalValueInput.disabled = false;
+            intervalUnitSelect.disabled = false;
+
+            totalIntervalSeconds = calculateTotalSeconds();
+            remainingSeconds = totalIntervalSeconds;
+
+            statusLabel.textContent = 'Ready';
+
+            // Reset background if inverted
+            if (isInverted) {
+                triggerInversion();
+            }
+
+            updateUI();
+        }
+
+        // Event Listeners
+        startBtn.addEventListener('click', startTimer);
+        pauseBtn.addEventListener('click', pauseTimer);
+        resetBtn.addEventListener('click', resetTimer);
+
+        intervalValueInput.addEventListener('change', () => {
+            if (!isRunning) resetTimer();
+        });
+
+        intervalUnitSelect.addEventListener('change', () => {
+            if (!isRunning) resetTimer();
+        });
+
+        // Initialize display state
+        window.onload = function() {
+            progressRing.style.strokeDasharray = `${RING_CIRCUMFERENCE}`;
+            resetTimer();
+        };
+    </script>
+</body>
+</html>
