@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-black text-white">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document Camera Visualizer</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    /* Hide scrollbars for clean full-screen experience */
+    body {
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    
+    /* Smooth controls fade out */
+    .controls-overlay {
+      transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+    }
+    .controls-overlay.idle {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-8px);
+    }
+
+    /* Custom styling for range inputs */
+    input[type=range] {
+      accent-color: #3b82f6;
+    }
+
+    /* Custom scrollbar for dropdown menus */
+    select::-webkit-scrollbar {
+      width: 6px;
+    }
+    select::-webkit-scrollbar-thumb {
+      background: #4b5563;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="h-full w-full bg-black flex items-center justify-center relative overflow-hidden font-sans">
+
+  <!-- Video Viewport Container -->
+  <div id="video-container" class="relative w-full h-full flex items-center justify-center bg-black overflow-hidden">
+    <!-- Camera Feed -->
+    <video id="video" autoplay playsinline class="w-full h-full object-contain transition-transform duration-200 ease-out origin-center"></video>
+
+    <!-- Overlay Grid / Guides -->
+    <div id="grid-overlay" class="pointer-events-none absolute inset-0 hidden border border-white/10">
+      <div class="w-full h-full grid grid-cols-3 grid-rows-3">
+        <div class="border border-white/10"></div>
+        <div class="border border-white/10"></div>
+        <div class="border border-white/10"></div>
+        <div class="border border-white/10"></div>
+        <div class="border border-white/10"></div>
+        <div class="border border-white/10"></div>
+        <div class="border border-white/10"></div>
+        <div class="border border-white/10"></div>
+        <div class="border border-white/10"></div>
+      </div>
+    </div>
+
+    <!-- Permission Prompt & Diagnostics State -->
+    <div id="placeholder" class="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950 p-6 text-center z-10">
+      <div id="status-icon-bg" class="w-16 h-16 bg-blue-600/20 text-blue-500 rounded-full flex items-center justify-center mb-4">
+        <i id="status-icon" data-lucide="camera" class="w-8 h-8"></i>
+      </div>
+      <h1 id="status-title" class="text-xl font-bold mb-2 text-zinc-100">Document Visualizer Ready</h1>
+      <p id="status-message" class="text-sm text-zinc-400 max-w-md mb-6">Click below to allow camera permissions and start your visualizer stream.</p>
+      
+      <!-- HTTPS Warning Box (shown dynamically if loaded over insecure HTTP) -->
+      <div id="https-warning" class="hidden max-w-md w-full bg-amber-500/10 border border-amber-500/30 text-amber-200 rounded-xl p-3 mb-6 text-xs text-left flex items-start gap-2.5">
+        <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-400 shrink-0 mt-0.5"></i>
+        <div>
+          <span class="font-semibold">Insecure Connection (HTTP)</span>
+          <p class="text-amber-300/80 mt-0.5">Web browsers restrict camera access to secure connections (<code class="bg-amber-950/50 px-1 rounded">https://</code> or <code class="bg-amber-950/50 px-1 rounded">localhost</code>). Please switch to HTTPS if camera access fails.</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button id="start-btn" class="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg shadow-lg hover:shadow-blue-500/20 transition-all flex items-center gap-2 cursor-pointer">
+          <i data-lucide="power" class="w-4 h-4"></i> Allow & Start Camera
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Control Bar -->
+  <header id="controls-bar" class="controls-overlay fixed top-4 inset-x-4 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 z-20 flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl bg-zinc-900/80 backdrop-blur-md border border-white/10 shadow-2xl max-w-5xl w-[calc(100%-2rem)]">
+    
+    <!-- Left Section: Device Selection & Preset Controls -->
+    <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+      <!-- Camera Selector -->
+      <div class="relative flex items-center">
+        <i data-lucide="video" class="w-4 h-4 absolute left-3 text-zinc-400 pointer-events-none"></i>
+        <select id="camera-select" class="bg-zinc-800/90 text-zinc-100 text-xs sm:text-sm pl-9 pr-8 py-2 rounded-xl border border-white/10 focus:outline-none focus:ring-2 focus:ring-blue-500 hover:bg-zinc-700/80 transition-colors appearance-none max-w-[180px] sm:max-w-[220px] truncate cursor-pointer">
+          <option value="">Select Camera...</option>
+        </select>
+        <i data-lucide="chevron-down" class="w-3.5 h-3.5 absolute right-2.5 text-zinc-400 pointer-events-none"></i>
+      </div>
+
+      <!-- Fit Toggle (Contain / Cover) -->
+      <button id="fit-btn" title="Toggle Aspect Fit / Cover" class="p-2 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 rounded-xl border border-white/10 text-zinc-300 hover:text-white transition-colors flex items-center justify-center cursor-pointer">
+        <i data-lucide="frame" class="w-4 h-4"></i>
+      </button>
+
+      <!-- Rotate Button -->
+      <button id="rotate-btn" title="Rotate 90° Clockwise" class="p-2 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 rounded-xl border border-white/10 text-zinc-300 hover:text-white transition-colors flex items-center justify-center cursor-pointer">
+        <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+      </button>
+
+      <!-- Flip/Mirror Button -->
+      <button id="flip-btn" title="Mirror Horizontally" class="p-2 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 rounded-xl border border-white/10 text-zinc-300 hover:text-white transition-colors flex items-center justify-center cursor-pointer">
+        <i data-lucide="flip-horizontal" class="w-4 h-4"></i>
+      </button>
+      
+      <!-- Alignment Grid Toggle -->
+      <button id="grid-btn" title="Toggle Alignment Grid" class="p-2 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 rounded-xl border border-white/10 text-zinc-300 hover:text-white transition-colors flex items-center justify-center cursor-pointer">
+        <i data-lucide="grid" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <!-- Right Section: Adjustments & Screen Tools -->
+    <div class="flex items-center gap-2">
+      
+      <!-- White Balance / Color Controls Toggle -->
+      <button id="adjust-panel-btn" class="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 text-xs sm:text-sm text-zinc-200 hover:text-white rounded-xl border border-white/10 transition-colors flex items-center gap-2 cursor-pointer">
+        <i data-lucide="sliders" class="w-4 h-4 text-blue-400"></i>
+        <span>White Balance & Image</span>
+      </button>
+
+      <!-- Freeze Frame Toggle -->
+      <button id="freeze-btn" title="Freeze / Pause Frame" class="p-2 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 rounded-xl border border-white/10 text-zinc-300 hover:text-white transition-colors flex items-center justify-center cursor-pointer">
+        <i data-lucide="pause" class="w-4 h-4" id="freeze-icon"></i>
+      </button>
+
+      <!-- Fullscreen Toggle -->
+      <button id="fullscreen-btn" title="Toggle Fullscreen" class="p-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded-xl border border-blue-400/20 transition-all flex items-center justify-center shadow-md hover:shadow-blue-500/20 cursor-pointer">
+        <i data-lucide="maximize" class="w-4 h-4" id="fullscreen-icon"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Adjustment Drawer Floating Panel -->
+  <div id="adjust-panel" class="controls-overlay fixed top-20 right-4 z-20 w-80 p-4 rounded-2xl bg-zinc-900/90 backdrop-blur-md border border-white/10 shadow-2xl hidden space-y-4 text-xs">
+    <div class="flex items-center justify-between pb-2 border-b border-zinc-800">
+      <span class="font-semibold text-zinc-200 flex items-center gap-1.5 text-sm">
+        <i data-lucide="sliders" class="w-4 h-4 text-blue-400"></i> Visualizer Settings
+      </span>
+      <button id="reset-adjust-btn" class="text-xs text-blue-400 hover:text-blue-300 underline cursor-pointer">Reset All</button>
+    </div>
+
+    <!-- White Balance Section -->
+    <div class="space-y-2">
+      <div class="flex justify-between text-zinc-400 font-medium">
+        <span>White Balance (Temp)</span>
+        <span id="temp-val" class="text-zinc-200">5000 K</span>
+      </div>
+      <input id="wb-temp" type="range" min="2500" max="9000" value="5000" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
+      <div class="flex justify-between text-[10px] text-zinc-500">
+        <span>Warm / Amber</span>
+        <span>Cool / Blue</span>
+      </div>
+    </div>
+
+    <!-- Tint / Hue Shift -->
+    <div class="space-y-2">
+      <div class="flex justify-between text-zinc-400 font-medium">
+        <span>Color Tint / Hue</span>
+        <span id="tint-val" class="text-zinc-200">0°</span>
+      </div>
+      <input id="hue-rotate" type="range" min="-180" max="180" value="0" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
+    </div>
+
+    <!-- Brightness -->
+    <div class="space-y-2">
+      <div class="flex justify-between text-zinc-400 font-medium">
+        <span>Brightness</span>
+        <span id="bright-val" class="text-zinc-200">100%</span>
+      </div>
+      <input id="brightness" type="range" min="50" max="180" value="100" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
+    </div>
+
+    <!-- Contrast -->
+    <div class="space-y-2">
+      <div class="flex justify-between text-zinc-400 font-medium">
+        <span>Contrast</span>
+        <span id="contrast-val" class="text-zinc-200">100%</span>
+      </div>
+      <input id="contrast" type="range" min="50" max="200" value="100" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
+    </div>
+
+    <!-- Saturation -->
+    <div class="space-y-2">
+      <div class="flex justify-between text-zinc-400 font-medium">
+        <span>Saturation</span>
+        <span id="saturate-val" class="text-zinc-200">100%</span>
+      </div>
+      <input id="saturate" type="range" min="0" max="200" value="100" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
+    </div>
+
+    <!-- Hardware White Balance Status -->
+    <div id="hardware-wb-status" class="pt-2 border-t border-zinc-800 text-[11px] text-zinc-500 flex items-center gap-1.5">
+      <i data-lucide="cpu" class="w-3.5 h-3.5"></i>
+      <span id="hardware-wb-text">Hardware White Balance: Auto/Software Fallback</span>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 bg-zinc-900/90 text-zinc-200 border border-white/10 rounded-xl text-xs shadow-xl backdrop-blur-md opacity-0 transition-opacity duration-300 pointer-events-none z-30">
+    Notification
+  </div>
+
+  <script>
+    // Initialize Lucide Icons
+    lucide.createIcons();
+
+    // DOM Elements
+    const video = document.getElementById('video');
+    const placeholder = document.getElementById('placeholder');
+    const startBtn = document.getElementById('start-btn');
+    const statusIconBg = document.getElementById('status-icon-bg');
+    const statusIcon = document.getElementById('status-icon');
+    const statusTitle = document.getElementById('status-title');
+    const statusMessage = document.getElementById('status-message');
+    const httpsWarning = document.getElementById('https-warning');
+
+    const cameraSelect = document.getElementById('camera-select');
+    const controlsBar = document.getElementById('controls-bar');
+    const adjustPanel = document.getElementById('adjust-panel');
+    const adjustPanelBtn = document.getElementById('adjust-panel-btn');
+    const resetAdjustBtn = document.getElementById('reset-adjust-btn');
+    const fitBtn = document.getElementById('fit-btn');
+    const rotateBtn = document.getElementById('rotate-btn');
+    const flipBtn = document.getElementById('flip-btn');
+    const gridBtn = document.getElementById('grid-btn');
+    const gridOverlay = document.getElementById('grid-overlay');
+    const freezeBtn = document.getElementById('freeze-btn');
+    const freezeIcon = document.getElementById('freeze-icon');
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    const fullscreenIcon = document.getElementById('fullscreen-icon');
+    const toast = document.getElementById('toast');
+
+    // Controls sliders
+    const wbTempInput = document.getElementById('wb-temp');
+    const hueRotateInput = document.getElementById('hue-rotate');
+    const brightnessInput = document.getElementById('brightness');
+    const contrastInput = document.getElementById('contrast');
+    const saturateInput = document.getElementById('saturate');
+
+    // Value Displays
+    const tempVal = document.getElementById('temp-val');
+    const tintVal = document.getElementById('tint-val');
+    const brightVal = document.getElementById('bright-val');
+    const contrastVal = document.getElementById('contrast-val');
+    const saturateVal = document.getElementById('saturate-val');
+    const hardwareWbText = document.getElementById('hardware-wb-text');
+
+    // State Variables
+    let currentStream = null;
+    let rotationAngle = 0;
+    let isMirrored = false;
+    let isCoverFit = false;
+    let isFrozen = false;
+    let idleTimer = null;
+    let isHardwareWbSupported = false;
+
+    // Default Filter Values
+    const defaults = {
+      wbTemp: 5000,
+      hueRotate: 0,
+      brightness: 100,
+      contrast: 100,
+      saturate: 100
+    };
+
+    // Check for Secure Context
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      httpsWarning.classList.remove('hidden');
+    }
+
+    // Show Toast
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.remove('opacity-0');
+      setTimeout(() => {
+        toast.classList.add('opacity-0');
+      }, 2500);
+    }
+
+    // Render Error UI state on failure
+    function renderErrorState(title, message, isError = true) {
+      placeholder.classList.remove('hidden');
+      statusTitle.textContent = title;
+      statusMessage.textContent = message;
+
+      if (isError) {
+        statusIconBg.className = "w-16 h-16 bg-red-600/20 text-red-500 rounded-full flex items-center justify-center mb-4";
+        statusIcon.setAttribute('data-lucide', 'camera-off');
+      } else {
+        statusIconBg.className = "w-16 h-16 bg-blue-600/20 text-blue-500 rounded-full flex items-center justify-center mb-4";
+        statusIcon.setAttribute('data-lucide', 'camera');
+      }
+      lucide.createIcons();
+    }
+
+    // Populate Camera Dropdown
+    async function getCameraDevices() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+        renderErrorState("Browser Not Supported", "Your browser does not support media device APIs.");
+        return [];
+      }
+
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+
+        cameraSelect.innerHTML = '';
+
+        if (videoDevices.length === 0) {
+          const option = document.createElement('option');
+          option.value = '';
+          option.text = 'No cameras found';
+          cameraSelect.appendChild(option);
+          return [];
+        }
+
+        videoDevices.forEach((device, index) => {
+          const option = document.createElement('option');
+          option.value = device.deviceId;
+          // Use label if permission granted, otherwise generic fallback name
+          option.text = device.label || `Camera ${index + 1} (${device.deviceId.slice(0, 5)}...)`;
+          cameraSelect.appendChild(option);
+        });
+
+        return videoDevices;
+      } catch (err) {
+        console.error("Error enumerating devices:", err);
+        return [];
+      }
+    }
+
+    // Start Video Stream
+    async function startCamera(deviceId = null) {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        renderErrorState("Camera API Unavailable", "Camera access is blocked or unavailable in this browsing context.");
+        return;
+      }
+
+      // Stop active stream before switching
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+      }
+
+      // First attempt high resolution settings
+      const videoConstraints = {
+        width: { ideal: 3840, min: 1280 },
+        height: { ideal: 2160, min: 720 },
+        frameRate: { ideal: 60, min: 30 }
+      };
+
+      if (deviceId) {
+        videoConstraints.deviceId = { exact: deviceId };
+      }
+
+      try {
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
+        } catch (initialErr) {
+          // Fallback to basic video constraints if high-res fails
+          console.warn("High-res constraints rejected, falling back to standard video:", initialErr);
+          stream = await navigator.mediaDevices.getUserMedia({ video: deviceId ? { deviceId: { exact: deviceId } } : true });
+        }
+
+        currentStream = stream;
+        video.srcObject = stream;
+        placeholder.classList.add('hidden');
+
+        // Refresh camera dropdown to retrieve full device labels
+        const devices = await getCameraDevices();
+
+        // Update selected option in dropdown
+        const track = stream.getVideoTracks()[0];
+        const settings = track.getSettings();
+        if (settings.deviceId) {
+          cameraSelect.value = settings.deviceId;
+        }
+
+        checkHardwareCapabilities(track);
+        updateVideoTransformAndFilters();
+        showToast("Camera stream connected");
+
+      } catch (err) {
+        console.error("Camera access error:", err);
+
+        let errorTitle = "Camera Access Error";
+        let errorMsg = err.message || "Could not access the camera stream.";
+
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          errorTitle = "Permission Denied";
+          errorMsg = "Camera access was blocked by your browser settings. Please allow camera permissions in your browser address bar and click 'Try Again'.";
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          errorTitle = "No Camera Found";
+          errorMsg = "No video capture device was detected on your system. Please connect a USB document camera or webcam.";
+        } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+          errorTitle = "Camera In Use";
+          errorMsg = "The selected camera is currently being used by another application or tab (e.g., Zoom, Teams, Meet). Please close other camera software and try again.";
+        } else if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+          errorTitle = "HTTPS Required";
+          errorMsg = "Browsers require a secure HTTPS connection to access hardware cameras.";
+        }
+
+        renderErrorState(errorTitle, errorMsg, true);
+      }
+    }
+
+    // Inspect Track Capabilities (Hardware White Balance support)
+    function checkHardwareCapabilities(track) {
+      if (!track.getCapabilities) return;
+      const capabilities = track.getCapabilities();
+
+      if (capabilities.whiteBalanceMode) {
+        isHardwareWbSupported = true;
+        hardwareWbText.textContent = `Hardware WB: Supported (${capabilities.whiteBalanceMode.join(', ')})`;
+      } else {
+        isHardwareWbSupported = false;
+        hardwareWbText.textContent = "Hardware WB: Software Filter Emulation Active";
+      }
+    }
+
+    // Apply Video Transformations & CSS/Native Filters
+    function updateVideoTransformAndFilters() {
+      // 1. Transform Matrix (Rotation & Mirroring)
+      let transformStr = `rotate(${rotationAngle}deg)`;
+      if (isMirrored) {
+        transformStr += ` scaleX(-1)`;
+      }
+      video.style.transform = transformStr;
+
+      // Fit layout adjustments for 90/270 deg rotation
+      if (rotationAngle === 90 || rotationAngle === 270) {
+        video.style.maxWidth = "100vh";
+        video.style.maxHeight = "100vw";
+      } else {
+        video.style.maxWidth = "100vw";
+        video.style.maxHeight = "100vh";
+      }
+
+      // 2. White Balance Color Calculations (CSS Emulation)
+      const tempK = parseInt(wbTempInput.value);
+      const brightness = brightnessInput.value;
+      const contrast = contrastInput.value;
+      const saturate = saturateInput.value;
+      const hue = hueRotateInput.value;
+
+      let temperatureFilter = "";
+      if (tempK < 5000) {
+        // Warm temperature (Amber shift)
+        const warmRatio = (5000 - tempK) / 2500;
+        temperatureFilter = `sepia(${warmRatio * 30}%) hue-rotate(-${warmRatio * 15}deg)`;
+      } else {
+        // Cool temperature (Blue shift)
+        const coolRatio = (tempK - 5000) / 4000;
+        temperatureFilter = `sepia(${coolRatio * 20}%) hue-rotate(${coolRatio * 140}deg) saturate(${100 + coolRatio * 10}%)`;
+      }
+
+      video.style.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturate}%) hue-rotate(${hue}deg) ${temperatureFilter}`;
+
+      // Hardware white balance attempt if supported
+      if (isHardwareWbSupported && currentStream) {
+        const track = currentStream.getVideoTracks()[0];
+        if (track && track.applyConstraints) {
+          track.applyConstraints({
+            advanced: [{ colorTemperature: tempK }]
+          }).catch(() => {});
+        }
+      }
+
+      // Update Slider Label Text
+      tempVal.textContent = `${tempK} K`;
+      tintVal.textContent = `${hue}°`;
+      brightVal.textContent = `${brightness}%`;
+      contrastVal.textContent = `${contrast}%`;
+      saturateVal.textContent = `${saturate}%`;
+    }
+
+    // Auto-Hide Controls Bar on Mouse Inactivity
+    function resetIdleTimer() {
+      controlsBar.classList.remove('idle');
+      adjustPanel.classList.remove('idle');
+      document.body.style.cursor = 'default';
+
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        controlsBar.classList.add('idle');
+        adjustPanel.classList.add('idle');
+        document.body.style.cursor = 'none';
+      }, 3000);
+    }
+
+    // Event Listeners
+
+    startBtn.addEventListener('click', () => startCamera());
+
+    cameraSelect.addEventListener('change', (e) => {
+      if (e.target.value) {
+        startCamera(e.target.value);
+      }
+    });
+
+    rotateBtn.addEventListener('click', () => {
+      rotationAngle = (rotationAngle + 90) % 360;
+      updateVideoTransformAndFilters();
+      showToast(`Rotated ${rotationAngle}°`);
+    });
+
+    flipBtn.addEventListener('click', () => {
+      isMirrored = !isMirrored;
+      updateVideoTransformAndFilters();
+      showToast(isMirrored ? "Camera Mirrored" : "Camera Normal");
+    });
+
+    fitBtn.addEventListener('click', () => {
+      isCoverFit = !isCoverFit;
+      video.classList.toggle('object-cover', isCoverFit);
+      video.classList.toggle('object-contain', !isCoverFit);
+      showToast(isCoverFit ? "Mode: Fill/Crop Screen" : "Mode: Fit Entire Document");
+    });
+
+    gridBtn.addEventListener('click', () => {
+      gridOverlay.classList.toggle('hidden');
+    });
+
+    freezeBtn.addEventListener('click', () => {
+      isFrozen = !isFrozen;
+      if (isFrozen) {
+        video.pause();
+        freezeIcon.setAttribute('data-lucide', 'play');
+        showToast("Frame Frozen");
+      } else {
+        video.play();
+        freezeIcon.setAttribute('data-lucide', 'pause');
+        showToast("Live Stream Resumed");
+      }
+      lucide.createIcons();
+    });
+
+    fullscreenBtn.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+          showToast("Fullscreen error: " + err.message);
+        });
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+      }
+    });
+
+    document.addEventListener('fullscreenchange', () => {
+      if (document.fullscreenElement) {
+        fullscreenIcon.setAttribute('data-lucide', 'minimize');
+      } else {
+        fullscreenIcon.setAttribute('data-lucide', 'maximize');
+      }
+      lucide.createIcons();
+    });
+
+    adjustPanelBtn.addEventListener('click', () => {
+      adjustPanel.classList.toggle('hidden');
+    });
+
+    [wbTempInput, hueRotateInput, brightnessInput, contrastInput, saturateInput].forEach(input => {
+      input.addEventListener('input', updateVideoTransformAndFilters);
+    });
+
+    resetAdjustBtn.addEventListener('click', () => {
+      wbTempInput.value = defaults.wbTemp;
+      hueRotateInput.value = defaults.hueRotate;
+      brightnessInput.value = defaults.brightness;
+      contrastInput.value = defaults.contrast;
+      saturateInput.value = defaults.saturate;
+      updateVideoTransformAndFilters();
+      showToast("Settings reset to default");
+    });
+
+    // Device disconnect / reconnect listener
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', () => {
+        getCameraDevices();
+      });
+    }
+
+    // Activity Detection
+    window.addEventListener('mousemove', resetIdleTimer);
+    window.addEventListener('mousedown', resetIdleTimer);
+    window.addEventListener('touchstart', resetIdleTimer);
+    window.addEventListener('keydown', resetIdleTimer);
+
+    // Initial check on load
+    getCameraDevices();
+    resetIdleTimer();
+  </script>
+</body>
+</html>
