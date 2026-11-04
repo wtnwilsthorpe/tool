@@ -69,7 +69,7 @@
 
     <!-- On-Screen Digital Clock (Inverted Color via mix-blend-difference) -->
     <div id="digital-clock" class="absolute bottom-4 right-6 z-10 pointer-events-none font-mono text-xl sm:text-2xl font-bold tracking-wider px-3 py-1 rounded-md bg-white text-black mix-blend-difference select-none transition-opacity duration-300">
-      00:00:00
+      00:00
     </div>
 
     <!-- Permission Prompt & Diagnostics State -->
@@ -516,7 +516,6 @@
       digitalClock.textContent = now.toLocaleTimeString([], { 
         hour: '2-digit', 
         minute: '2-digit', 
-        second: '2-digit', 
         hour12: false 
       });
     }
